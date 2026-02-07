@@ -13,4 +13,5 @@
 8. [x] Update the server backup function to upload a file to an AWS S3 bucket
 9. [x] Add a sqlite database to keep track of the backup sync processes and file upload status
 10. [x] Add UI functionality to view the backup history
-11. [x] Update the backup service to provide the option to backup photos to a local directory backup or AWS S3 
+11. [x] Update the backup service to provide the option to backup photos to a local directory backup or AWS S3
+12. [x] Update the Home screen to remove the feature cards
