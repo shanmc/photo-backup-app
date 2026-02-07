@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { readPhotosFromDirectory, getPhotoPath } from './services/photoService';
 import { backupService } from './services/backupService';
+import { scanService } from './services/scanService';
 
 const app: Express = express();
 
@@ -65,6 +66,57 @@ app.get('/api/photos/thumbnail/:folderId/:filename', (req: Request, res: Respons
     console.error('Error serving photo:', error);
     res.status(500).json({
       error: 'Failed to serve photo',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Photo scan endpoints
+
+// Start photo scan
+app.post('/api/photos/scan', async (req: Request, res: Response) => {
+  try {
+    const { sourceDirectory = PHOTOS_DIR } = req.body;
+
+    await scanService.startScan(sourceDirectory);
+
+    const stats = scanService.getScanStats();
+    res.json({
+      message: 'Photo scan completed successfully',
+      ...stats
+    });
+  } catch (error) {
+    console.error('Error during photo scan:', error);
+    res.status(500).json({
+      error: 'Failed to scan photos',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get scan progress
+app.get('/api/photos/scan/progress', (req: Request, res: Response) => {
+  try {
+    const progress = scanService.getScanProgress();
+    res.json(progress);
+  } catch (error) {
+    console.error('Error getting scan progress:', error);
+    res.status(500).json({
+      error: 'Failed to get scan progress',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get scan statistics
+app.get('/api/photos/scan/stats', (req: Request, res: Response) => {
+  try {
+    const stats = scanService.getScanStats();
+    res.json(stats);
+  } catch (error) {
+    console.error('Error getting scan stats:', error);
+    res.status(500).json({
+      error: 'Failed to get scan stats',
       message: error instanceof Error ? error.message : 'Unknown error'
     });
   }

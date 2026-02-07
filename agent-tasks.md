@@ -15,3 +15,4 @@
 10. [x] Add UI functionality to view the backup history
 11. [x] Update the backup service to provide the option to backup photos to a local directory backup or AWS S3
 12. [x] Update the Home screen to remove the feature cards
+13. [x] Add a feature to scan all photos in the source directory and persist the structure in the sqlite database. The directory and files should be retrieved from the database rather than the file system.

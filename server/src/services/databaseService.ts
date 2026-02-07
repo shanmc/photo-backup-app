@@ -27,6 +27,25 @@ export interface FileUpload {
   errorMessage?: string;
 }
 
+export interface PhotoDirectory {
+  id?: number;
+  name: string;
+  path: string;
+  photoCount: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Photo {
+  id?: number;
+  directoryId: number;
+  fileName: string;
+  filePath: string;
+  fileSize: number;
+  dateModified: string;
+  createdAt?: string;
+}
+
 class DatabaseService {
   private db: Database.Database;
   private dbPath: string;
@@ -98,12 +117,41 @@ class DatabaseService {
       )
     `);
 
+    // Create photo_directories table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS photo_directories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        path TEXT NOT NULL UNIQUE,
+        photo_count INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create photos table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS photos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        directory_id INTEGER NOT NULL,
+        file_name TEXT NOT NULL,
+        file_path TEXT NOT NULL UNIQUE,
+        file_size INTEGER NOT NULL,
+        date_modified TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (directory_id) REFERENCES photo_directories(id) ON DELETE CASCADE
+      )
+    `);
+
     // Create indexes for better query performance
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_backup_sessions_status ON backup_sessions(status);
       CREATE INDEX IF NOT EXISTS idx_backup_sessions_start_time ON backup_sessions(start_time DESC);
       CREATE INDEX IF NOT EXISTS idx_file_uploads_session_id ON file_uploads(session_id);
       CREATE INDEX IF NOT EXISTS idx_file_uploads_status ON file_uploads(status);
+      CREATE INDEX IF NOT EXISTS idx_photo_directories_path ON photo_directories(path);
+      CREATE INDEX IF NOT EXISTS idx_photos_directory_id ON photos(directory_id);
+      CREATE INDEX IF NOT EXISTS idx_photos_file_path ON photos(file_path);
     `);
 
     console.log('Database initialized successfully at:', this.dbPath);
@@ -339,6 +387,187 @@ class DatabaseService {
     });
 
     transaction(fileUploads);
+  }
+
+  /**
+   * Clear all photo directories and photos
+   */
+  public clearPhotoData(): void {
+    const deletePhotos = this.db.prepare('DELETE FROM photos');
+    const deleteDirectories = this.db.prepare('DELETE FROM photo_directories');
+
+    const transaction = this.db.transaction(() => {
+      deletePhotos.run();
+      deleteDirectories.run();
+    });
+
+    transaction();
+  }
+
+  /**
+   * Create or update a photo directory
+   */
+  public upsertPhotoDirectory(directory: Omit<PhotoDirectory, 'id' | 'createdAt' | 'updatedAt'>): number {
+    const stmt = this.db.prepare(`
+      INSERT INTO photo_directories (name, path, photo_count)
+      VALUES (?, ?, ?)
+      ON CONFLICT(path) DO UPDATE SET
+        name = excluded.name,
+        photo_count = excluded.photo_count,
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING id
+    `);
+
+    const result = stmt.get(
+      directory.name,
+      directory.path,
+      directory.photoCount
+    ) as { id: number };
+
+    return result.id;
+  }
+
+  /**
+   * Get all photo directories
+   */
+  public getAllPhotoDirectories(): PhotoDirectory[] {
+    const stmt = this.db.prepare(`
+      SELECT id, name, path, photo_count as photoCount,
+             created_at as createdAt, updated_at as updatedAt
+      FROM photo_directories
+      ORDER BY name ASC
+    `);
+
+    return stmt.all() as PhotoDirectory[];
+  }
+
+  /**
+   * Get a photo directory by ID
+   */
+  public getPhotoDirectory(id: number): PhotoDirectory | null {
+    const stmt = this.db.prepare(`
+      SELECT id, name, path, photo_count as photoCount,
+             created_at as createdAt, updated_at as updatedAt
+      FROM photo_directories
+      WHERE id = ?
+    `);
+
+    return stmt.get(id) as PhotoDirectory | null;
+  }
+
+  /**
+   * Get a photo directory by path
+   */
+  public getPhotoDirectoryByPath(path: string): PhotoDirectory | null {
+    const stmt = this.db.prepare(`
+      SELECT id, name, path, photo_count as photoCount,
+             created_at as createdAt, updated_at as updatedAt
+      FROM photo_directories
+      WHERE path = ?
+    `);
+
+    return stmt.get(path) as PhotoDirectory | null;
+  }
+
+  /**
+   * Create or update a photo
+   */
+  public upsertPhoto(photo: Omit<Photo, 'id' | 'createdAt'>): number {
+    const stmt = this.db.prepare(`
+      INSERT INTO photos (directory_id, file_name, file_path, file_size, date_modified)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(file_path) DO UPDATE SET
+        directory_id = excluded.directory_id,
+        file_name = excluded.file_name,
+        file_size = excluded.file_size,
+        date_modified = excluded.date_modified
+      RETURNING id
+    `);
+
+    const result = stmt.get(
+      photo.directoryId,
+      photo.fileName,
+      photo.filePath,
+      photo.fileSize,
+      photo.dateModified
+    ) as { id: number };
+
+    return result.id;
+  }
+
+  /**
+   * Bulk insert photos for better performance
+   */
+  public bulkUpsertPhotos(photos: Omit<Photo, 'id' | 'createdAt'>[]): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO photos (directory_id, file_name, file_path, file_size, date_modified)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(file_path) DO UPDATE SET
+        directory_id = excluded.directory_id,
+        file_name = excluded.file_name,
+        file_size = excluded.file_size,
+        date_modified = excluded.date_modified
+    `);
+
+    const transaction = this.db.transaction((photoList: Omit<Photo, 'id' | 'createdAt'>[]) => {
+      for (const photo of photoList) {
+        stmt.run(
+          photo.directoryId,
+          photo.fileName,
+          photo.filePath,
+          photo.fileSize,
+          photo.dateModified
+        );
+      }
+    });
+
+    transaction(photos);
+  }
+
+  /**
+   * Get all photos for a specific directory
+   */
+  public getPhotosByDirectory(directoryId: number): Photo[] {
+    const stmt = this.db.prepare(`
+      SELECT id, directory_id as directoryId, file_name as fileName,
+             file_path as filePath, file_size as fileSize,
+             date_modified as dateModified, created_at as createdAt
+      FROM photos
+      WHERE directory_id = ?
+      ORDER BY file_name ASC
+    `);
+
+    return stmt.all(directoryId) as Photo[];
+  }
+
+  /**
+   * Get all photos
+   */
+  public getAllPhotos(): Photo[] {
+    const stmt = this.db.prepare(`
+      SELECT id, directory_id as directoryId, file_name as fileName,
+             file_path as filePath, file_size as fileSize,
+             date_modified as dateModified, created_at as createdAt
+      FROM photos
+      ORDER BY directory_id, file_name ASC
+    `);
+
+    return stmt.all() as Photo[];
+  }
+
+  /**
+   * Get photo by file path
+   */
+  public getPhotoByPath(filePath: string): Photo | null {
+    const stmt = this.db.prepare(`
+      SELECT id, directory_id as directoryId, file_name as fileName,
+             file_path as filePath, file_size as fileSize,
+             date_modified as dateModified, created_at as createdAt
+      FROM photos
+      WHERE file_path = ?
+    `);
+
+    return stmt.get(filePath) as Photo | null;
   }
 
   /**

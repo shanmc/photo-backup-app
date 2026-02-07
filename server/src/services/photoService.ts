@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { databaseService } from './databaseService';
 
 interface Photo {
   id: number;
@@ -43,18 +44,16 @@ function getFileDate(filePath: string): string {
 }
 
 /**
- * Read photos from a directory and organize by subdirectories
+ * Read photos from database and organize by subdirectories
+ * Note: The database must be populated by running a scan first
  */
 export function readPhotosFromDirectory(baseDir: string): PhotoData {
-  const directories: Directory[] = [];
-  const photosByFolder: { [key: string]: Photo[] } = {};
-  let photoIdCounter = 1;
-  let folderIdCounter = 1;
-
   try {
-    // Check if base directory exists
-    if (!fs.existsSync(baseDir)) {
-      console.warn(`Base directory does not exist: ${baseDir}`);
+    // Get all directories from database
+    const dbDirectories = databaseService.getAllPhotoDirectories();
+
+    if (dbDirectories.length === 0) {
+      console.warn('No directories found in database. Please run a photo scan first.');
       return {
         selectedFolder: 1,
         directories: [],
@@ -62,56 +61,41 @@ export function readPhotosFromDirectory(baseDir: string): PhotoData {
       };
     }
 
-    // Read all entries in the base directory
-    const entries = fs.readdirSync(baseDir, { withFileTypes: true });
+    const directories: Directory[] = [];
+    const photosByFolder: { [key: string]: Photo[] } = {};
+    let photoIdCounter = 1;
 
-    // Process each subdirectory
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        const folderPath = path.join(baseDir, entry.name);
-        const folderId = folderIdCounter++;
-        const photos: Photo[] = [];
+    // Process each directory from database
+    for (const dbDir of dbDirectories) {
+      // Get all photos for this directory
+      const dbPhotos = databaseService.getPhotosByDirectory(dbDir.id!);
 
-        try {
-          // Read files in the subdirectory
-          const files = fs.readdirSync(folderPath);
+      if (dbPhotos.length > 0) {
+        directories.push({
+          id: dbDir.id!,
+          name: dbDir.name,
+          photoCount: dbDir.photoCount
+        });
 
-          for (const file of files) {
-            if (isImageFile(file)) {
-              const filePath = path.join(folderPath, file);
+        // Convert database photos to Photo interface format
+        const photos: Photo[] = dbPhotos.map(dbPhoto => ({
+          id: photoIdCounter++,
+          name: dbPhoto.fileName,
+          date: dbPhoto.dateModified.split('T')[0], // Convert to YYYY-MM-DD format
+          thumbnail: `/api/photos/thumbnail/${dbDir.id}/${encodeURIComponent(dbPhoto.fileName)}`
+        }));
 
-              photos.push({
-                id: photoIdCounter++,
-                name: file,
-                date: getFileDate(filePath),
-                thumbnail: `/api/photos/thumbnail/${folderId}/${encodeURIComponent(file)}`
-              });
-            }
-          }
-
-          // Only add directories that contain photos
-          if (photos.length > 0) {
-            directories.push({
-              id: folderId,
-              name: entry.name,
-              photoCount: photos.length
-            });
-
-            photosByFolder[folderId.toString()] = photos;
-          }
-        } catch (err) {
-          console.error(`Error reading folder ${entry.name}:`, err);
-        }
+        photosByFolder[dbDir.id!.toString()] = photos;
       }
     }
 
     return {
-      selectedFolder: directories.length > 0 ? 1 : 0,
+      selectedFolder: directories.length > 0 ? directories[0].id : 1,
       directories,
       photosByFolder
     };
   } catch (error) {
-    console.error('Error reading photos directory:', error);
+    console.error('Error reading photos from database:', error);
     return {
       selectedFolder: 1,
       directories: [],
@@ -121,21 +105,25 @@ export function readPhotosFromDirectory(baseDir: string): PhotoData {
 }
 
 /**
- * Get the path to a specific photo
+ * Get the path to a specific photo from the database
  */
 export function getPhotoPath(baseDir: string, folderId: number, filename: string, directories: Directory[]): string | null {
   try {
-    const directory = directories.find(d => d.id === folderId);
-    if (!directory) {
+    // Get directory from database
+    const dbDirectory = databaseService.getPhotoDirectory(folderId);
+    if (!dbDirectory) {
+      console.warn(`Directory with id ${folderId} not found in database`);
       return null;
     }
 
-    const photoPath = path.join(baseDir, directory.name, filename);
+    // Construct the full file path
+    const photoPath = path.join(baseDir, dbDirectory.path, filename);
 
     if (fs.existsSync(photoPath)) {
       return photoPath;
     }
 
+    console.warn(`Photo file not found: ${photoPath}`);
     return null;
   } catch (error) {
     console.error('Error getting photo path:', error);
