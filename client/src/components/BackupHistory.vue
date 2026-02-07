@@ -1,10 +1,5 @@
 <template>
   <div class="backup-history">
-    <div class="header">
-      <h1>Backup History</h1>
-      <p class="subtitle">View all your previous backup sessions</p>
-    </div>
-
     <div class="container">
       <div class="history-card">
         <div class="card-header">
@@ -292,22 +287,6 @@ export default {
   min-height: 100vh;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   padding: 2rem;
-}
-
-.header {
-  text-align: center;
-  color: white;
-  margin-bottom: 2rem;
-}
-
-.header h1 {
-  font-size: 2.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.subtitle {
-  font-size: 1.2rem;
-  opacity: 0.9;
 }
 
 .container {
