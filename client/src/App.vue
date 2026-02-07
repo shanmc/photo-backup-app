@@ -53,7 +53,7 @@ export default {
 }
 
 .main-nav {
-  position: fixed;
+  position: block;
   top: 0;
   left: 0;
   right: 0;
