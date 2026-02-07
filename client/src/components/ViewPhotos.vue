@@ -37,8 +37,18 @@
 
       <div class="photo-grid-container">
         <div class="grid-header">
-          <h3>{{ currentFolderName }}</h3>
-          <span class="grid-count">{{ currentPhotos.length }} photos</span>
+          <div class="header-left">
+            <h3>{{ currentFolderName }}</h3>
+            <span class="grid-count">{{ currentPhotos.length }} photos</span>
+          </div>
+          <button
+            @click="refreshScan"
+            class="refresh-btn"
+            :disabled="isScanning"
+          >
+            <span class="refresh-icon" :class="{ spinning: isScanning }">🔄</span>
+            <span>{{ isScanning ? 'Scanning...' : 'Refresh Scan' }}</span>
+          </button>
         </div>
         <div class="photo-grid">
           <div
@@ -73,6 +83,7 @@ export default {
       photosByFolder: {},
       loading: true,
       error: null,
+      isScanning: false,
       apiBaseUrl: import.meta.env.VITE_API_URL || 'http://localhost:3000'
     }
   },
@@ -123,6 +134,36 @@ export default {
     },
     selectFolder(folderId) {
       this.selectedFolder = folderId
+    },
+    async refreshScan() {
+      this.isScanning = true
+      this.error = null
+
+      try {
+        // Trigger the scan
+        const response = await fetch(`${this.apiBaseUrl}/api/photos/scan`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        })
+
+        if (!response.ok) {
+          throw new Error(`Failed to scan photos: ${response.statusText}`)
+        }
+
+        const result = await response.json()
+        console.log('Scan completed:', result)
+
+        // Refresh the photo list
+        await this.fetchPhotos()
+
+      } catch (err) {
+        console.error('Error scanning photos:', err)
+        this.error = err.message || 'Failed to scan photos. Please make sure the server is running.'
+      } finally {
+        this.isScanning = false
+      }
     }
   }
 }
@@ -241,6 +282,12 @@ export default {
   border-bottom: 2px solid rgba(102, 126, 234, 0.2);
 }
 
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 .grid-header h3 {
   margin: 0;
   color: #2c3e50;
@@ -250,6 +297,41 @@ export default {
 .grid-count {
   color: #667eea;
   font-weight: 600;
+}
+
+.refresh-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #667eea;
+  color: white;
+  border: none;
+  padding: 0.6rem 1.2rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  background: #5568d3;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.refresh-icon {
+  font-size: 1.1rem;
+  display: inline-block;
+}
+
+.refresh-icon.spinning {
+  animation: spin 1s linear infinite;
 }
 
 .photo-grid {
