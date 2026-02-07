@@ -10,3 +10,4 @@
 3. [x] Create a new API route under the /server directory to read photos from a local directory and present back in the format that follows /specs/photos-data.json
 4. [x] Update the View Photos UI screen to fetch the Photo data from the server endpoint GET http://localhost:5000/api/photos
 5. [x] Create a new client UI feature that enables a photo backup sync process and monitors the progress
+6. [x] Update the server backup function to upload a file to an AWS S3 bucket

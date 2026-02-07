@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 interface BackupFile {
   path: string;
@@ -24,6 +25,8 @@ class BackupService {
   private backupStatus: BackupStatus;
   private backupInterval: NodeJS.Timeout | null = null;
   private currentIndex: number = 0;
+  private sourceDirectory: string = '';
+  private s3Client: S3Client;
 
   constructor() {
     this.backupStatus = {
@@ -35,6 +38,15 @@ class BackupService {
       currentFile: '',
       files: []
     };
+
+    // Initialize S3 client with credentials from environment variables
+    this.s3Client = new S3Client({
+      region: process.env.AWS_REGION || '',
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
+      }
+    });
   }
 
   /**
@@ -88,20 +100,52 @@ class BackupService {
   }
 
   /**
-   * Simulate backing up a single file
-   * In a real application, this would upload the file to cloud storage
+   * Upload a single file to AWS S3
    */
   private async backupSingleFile(file: BackupFile): Promise<boolean> {
-    return new Promise((resolve) => {
-      // Simulate network delay and upload time based on file size
-      const uploadTime = Math.min(500 + Math.random() * 1000, 2000);
+    try {
+      const bucketName = process.env.AWS_S3_BUCKET_NAME;
 
-      setTimeout(() => {
-        // Simulate 95% success rate
-        const success = Math.random() > 0.05;
-        resolve(success);
-      }, uploadTime);
-    });
+      if (!bucketName) {
+        console.error('AWS_S3_BUCKET_NAME environment variable is not set');
+        return false;
+      }
+
+      // Construct the full file path
+      const fullPath = path.join(this.sourceDirectory, file.path);
+
+      // Read the file from disk
+      const fileContent = fs.readFileSync(fullPath);
+
+      // Determine content type based on file extension
+      const ext = path.extname(file.name).toLowerCase();
+      const contentTypeMap: Record<string, string> = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.bmp': 'image/bmp'
+      };
+
+      const contentType = contentTypeMap[ext] || 'application/octet-stream';
+
+      // Upload to S3
+      const command = new PutObjectCommand({
+        Bucket: bucketName,
+        Key: file.path, // Use the relative path as the S3 key
+        Body: fileContent,
+        ContentType: contentType
+      });
+
+      await this.s3Client.send(command);
+
+      console.log(`Successfully uploaded ${file.name} to S3`);
+      return true;
+    } catch (error) {
+      console.error(`Error uploading ${file.name} to S3:`, error);
+      return false;
+    }
   }
 
   /**
@@ -150,6 +194,9 @@ class BackupService {
     if (this.backupStatus.isRunning) {
       return this.backupStatus;
     }
+
+    // Store the source directory for later use
+    this.sourceDirectory = sourceDir;
 
     // Scan directory for files
     const files = this.scanDirectory(sourceDir, sourceDir);
