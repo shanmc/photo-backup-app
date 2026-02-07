@@ -12,6 +12,8 @@ export interface BackupSession {
   failedFiles: number;
   totalSize: number;
   sourceDirectory: string;
+  destination: 'local' | 's3';
+  destinationPath?: string;
 }
 
 export interface FileUpload {
@@ -57,9 +59,28 @@ class DatabaseService {
         failed_files INTEGER NOT NULL DEFAULT 0,
         total_size INTEGER NOT NULL DEFAULT 0,
         source_directory TEXT NOT NULL,
+        destination TEXT NOT NULL DEFAULT 's3' CHECK(destination IN ('local', 's3')),
+        destination_path TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Add destination columns if they don't exist (migration)
+    try {
+      this.db.exec(`
+        ALTER TABLE backup_sessions ADD COLUMN destination TEXT NOT NULL DEFAULT 's3' CHECK(destination IN ('local', 's3'));
+      `);
+    } catch (e) {
+      // Column already exists, ignore
+    }
+
+    try {
+      this.db.exec(`
+        ALTER TABLE backup_sessions ADD COLUMN destination_path TEXT;
+      `);
+    } catch (e) {
+      // Column already exists, ignore
+    }
 
     // Create file_uploads table
     this.db.exec(`
@@ -93,8 +114,8 @@ class DatabaseService {
    */
   public createBackupSession(session: Omit<BackupSession, 'id'>): number {
     const stmt = this.db.prepare(`
-      INSERT INTO backup_sessions (start_time, status, total_files, completed_files, failed_files, total_size, source_directory)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO backup_sessions (start_time, status, total_files, completed_files, failed_files, total_size, source_directory, destination, destination_path)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -104,7 +125,9 @@ class DatabaseService {
       session.completedFiles,
       session.failedFiles,
       session.totalSize,
-      session.sourceDirectory
+      session.sourceDirectory,
+      session.destination,
+      session.destinationPath || null
     );
 
     return result.lastInsertRowid as number;
@@ -162,7 +185,8 @@ class DatabaseService {
       SELECT id, start_time as startTime, end_time as endTime, status,
              total_files as totalFiles, completed_files as completedFiles,
              failed_files as failedFiles, total_size as totalSize,
-             source_directory as sourceDirectory
+             source_directory as sourceDirectory, destination,
+             destination_path as destinationPath
       FROM backup_sessions
       WHERE id = ?
     `);
@@ -178,7 +202,8 @@ class DatabaseService {
       SELECT id, start_time as startTime, end_time as endTime, status,
              total_files as totalFiles, completed_files as completedFiles,
              failed_files as failedFiles, total_size as totalSize,
-             source_directory as sourceDirectory
+             source_directory as sourceDirectory, destination,
+             destination_path as destinationPath
       FROM backup_sessions
       ORDER BY start_time DESC
       LIMIT ?
@@ -195,7 +220,8 @@ class DatabaseService {
       SELECT id, start_time as startTime, end_time as endTime, status,
              total_files as totalFiles, completed_files as completedFiles,
              failed_files as failedFiles, total_size as totalSize,
-             source_directory as sourceDirectory
+             source_directory as sourceDirectory, destination,
+             destination_path as destinationPath
       FROM backup_sessions
       ORDER BY start_time DESC
       LIMIT 1

@@ -12,6 +12,16 @@
           <span :class="['status-badge', statusClass]">{{ statusText }}</span>
         </div>
 
+        <div class="destination-info" v-if="backupStatus.destination">
+          <span class="info-label">Backing up to:</span>
+          <span :class="['destination-badge', backupStatus.destination]">
+            {{ backupStatus.destination === 's3' ? 'AWS S3' : 'Local Directory' }}
+          </span>
+          <span v-if="backupStatus.destination === 'local' && backupStatus.destinationPath" class="info-path">
+            {{ backupStatus.destinationPath }}
+          </span>
+        </div>
+
         <div class="stats-grid">
           <div class="stat-item">
             <div class="stat-label">Total Files</div>
@@ -54,6 +64,49 @@
 
         <div class="error-message" v-if="error">
           <p>{{ error }}</p>
+        </div>
+
+        <div class="backup-config" v-if="!backupStatus.isRunning">
+          <div class="config-section">
+            <h3>Backup Destination</h3>
+            <div class="destination-options">
+              <label class="radio-option">
+                <input
+                  type="radio"
+                  name="destination"
+                  value="s3"
+                  v-model="backupDestination"
+                />
+                <div class="radio-content">
+                  <span class="radio-label">AWS S3</span>
+                  <span class="radio-description">Upload photos to Amazon S3 cloud storage</span>
+                </div>
+              </label>
+              <label class="radio-option">
+                <input
+                  type="radio"
+                  name="destination"
+                  value="local"
+                  v-model="backupDestination"
+                />
+                <div class="radio-content">
+                  <span class="radio-label">Local Directory</span>
+                  <span class="radio-description">Copy photos to a local backup folder</span>
+                </div>
+              </label>
+            </div>
+            <div class="destination-path" v-if="backupDestination === 'local'">
+              <label for="destPath">Backup Directory Path (optional):</label>
+              <input
+                type="text"
+                id="destPath"
+                v-model="destinationPath"
+                placeholder="/path/to/backup/directory"
+                class="path-input"
+              />
+              <p class="path-hint">Leave empty to use default backup directory</p>
+            </div>
+          </div>
         </div>
 
         <div class="action-buttons">
@@ -124,8 +177,12 @@ export default {
         failedFiles: 0,
         totalSize: 0,
         currentFile: '',
-        files: []
+        files: [],
+        destination: 's3',
+        destinationPath: ''
       },
+      backupDestination: 's3',
+      destinationPath: '',
       loading: false,
       error: null,
       statusPollInterval: null,
@@ -162,11 +219,17 @@ export default {
       this.error = null
 
       try {
+        const requestBody = {
+          destination: this.backupDestination,
+          destinationPath: this.destinationPath || undefined
+        }
+
         const response = await fetch(`${this.apiBaseUrl}/api/backup/start`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
-          }
+          },
+          body: JSON.stringify(requestBody)
         })
 
         if (!response.ok) {
@@ -354,6 +417,47 @@ export default {
   50% {
     opacity: 0.6;
   }
+}
+
+.destination-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: rgba(102, 126, 234, 0.05);
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.info-label {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 0.95rem;
+}
+
+.destination-badge {
+  padding: 0.4rem 1rem;
+  border-radius: 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.destination-badge.s3 {
+  background: rgba(52, 152, 219, 0.2);
+  color: #3498db;
+}
+
+.destination-badge.local {
+  background: rgba(39, 174, 96, 0.2);
+  color: #27ae60;
+}
+
+.info-path {
+  font-size: 0.85rem;
+  color: #7f8c8d;
+  font-family: monospace;
 }
 
 .stats-grid {
@@ -615,6 +719,109 @@ button:disabled {
   font-weight: 600;
 }
 
+/* Backup Configuration Styles */
+.backup-config {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background: rgba(102, 126, 234, 0.05);
+  border-radius: 8px;
+}
+
+.config-section h3 {
+  color: #2c3e50;
+  font-size: 1.2rem;
+  margin: 0 0 1rem 0;
+}
+
+.destination-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.radio-option {
+  display: flex;
+  align-items: flex-start;
+  padding: 1rem;
+  background: white;
+  border: 2px solid rgba(102, 126, 234, 0.2);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.radio-option:hover {
+  border-color: rgba(102, 126, 234, 0.5);
+  background: rgba(102, 126, 234, 0.02);
+}
+
+.radio-option input[type="radio"] {
+  margin-right: 0.75rem;
+  margin-top: 0.25rem;
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+}
+
+.radio-option input[type="radio"]:checked {
+  accent-color: #667eea;
+}
+
+.radio-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.radio-label {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 1rem;
+}
+
+.radio-description {
+  font-size: 0.85rem;
+  color: #7f8c8d;
+}
+
+.destination-path {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 8px;
+}
+
+.destination-path label {
+  display: block;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.path-input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 2px solid rgba(102, 126, 234, 0.2);
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-family: monospace;
+  transition: border-color 0.3s ease;
+}
+
+.path-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.path-hint {
+  margin: 0.5rem 0 0 0;
+  font-size: 0.8rem;
+  color: #7f8c8d;
+  font-style: italic;
+}
+
 @media (max-width: 768px) {
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
@@ -626,6 +833,10 @@ button:disabled {
 
   .file-item {
     flex-wrap: wrap;
+  }
+
+  .destination-options {
+    grid-template-columns: 1fr;
   }
 }
 </style>

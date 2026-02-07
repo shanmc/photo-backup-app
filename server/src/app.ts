@@ -75,7 +75,17 @@ app.get('/api/photos/thumbnail/:folderId/:filename', (req: Request, res: Respons
 // Start backup process
 app.post('/api/backup/start', (req: Request, res: Response) => {
   try {
-    const status = backupService.startBackup(PHOTOS_DIR);
+    const { destination = 's3', destinationPath } = req.body;
+
+    // Validate destination
+    if (destination !== 'local' && destination !== 's3') {
+      return res.status(400).json({
+        error: 'Invalid destination',
+        message: 'Destination must be either "local" or "s3"'
+      });
+    }
+
+    const status = backupService.startBackup(PHOTOS_DIR, destination, destinationPath);
     res.json(status);
   } catch (error) {
     console.error('Error starting backup:', error);

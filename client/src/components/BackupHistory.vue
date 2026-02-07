@@ -70,9 +70,20 @@
             </div>
 
             <div class="session-footer">
-              <div class="session-path">
-                <span class="path-label">Source:</span>
-                <span class="path-value">{{ session.sourceDirectory }}</span>
+              <div class="session-info-grid">
+                <div class="session-path">
+                  <span class="path-label">Source:</span>
+                  <span class="path-value">{{ session.sourceDirectory }}</span>
+                </div>
+                <div class="session-destination">
+                  <span class="path-label">Destination:</span>
+                  <span :class="['destination-badge', session.destination]">
+                    {{ session.destination === 's3' ? 'AWS S3' : 'Local Directory' }}
+                  </span>
+                  <span v-if="session.destination === 'local' && session.destinationPath" class="path-value">
+                    {{ session.destinationPath }}
+                  </span>
+                </div>
               </div>
               <button
                 @click.stop="viewSessionDetails(session.id)"
@@ -116,6 +127,16 @@
               <div class="summary-item">
                 <span class="summary-label">Source Directory:</span>
                 <span>{{ selectedSession.sourceDirectory }}</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">Backup Destination:</span>
+                <span :class="['destination-badge', selectedSession.destination]">
+                  {{ selectedSession.destination === 's3' ? 'AWS S3' : 'Local Directory' }}
+                </span>
+              </div>
+              <div class="summary-item" v-if="selectedSession.destination === 'local' && selectedSession.destinationPath">
+                <span class="summary-label">Destination Path:</span>
+                <span>{{ selectedSession.destinationPath }}</span>
               </div>
             </div>
 
@@ -517,27 +538,56 @@ export default {
 .session-footer {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   padding-top: 1rem;
   border-top: 1px solid rgba(102, 126, 234, 0.2);
+  gap: 1rem;
 }
 
-.session-path {
+.session-info-grid {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.session-path,
+.session-destination {
   text-align: left;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .path-label {
   font-weight: 600;
   color: #7f8c8d;
   font-size: 0.85rem;
-  margin-right: 0.5rem;
 }
 
 .path-value {
   font-size: 0.85rem;
   color: #2c3e50;
   font-family: monospace;
+}
+
+.destination-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.destination-badge.s3 {
+  background: rgba(52, 152, 219, 0.2);
+  color: #3498db;
+}
+
+.destination-badge.local {
+  background: rgba(39, 174, 96, 0.2);
+  color: #27ae60;
 }
 
 .btn-details {

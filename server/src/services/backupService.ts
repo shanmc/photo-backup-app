@@ -20,6 +20,8 @@ interface BackupStatus {
   currentFile: string;
   files: BackupFile[];
   sessionId?: number;
+  destination?: 'local' | 's3';
+  destinationPath?: string;
 }
 
 const SUPPORTED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
@@ -29,6 +31,8 @@ class BackupService {
   private backupInterval: NodeJS.Timeout | null = null;
   private currentIndex: number = 0;
   private sourceDirectory: string = '';
+  private backupDestination: 'local' | 's3' = 's3';
+  private destinationPath: string = '';
   private s3Client: S3Client;
   private currentSessionId: number | null = null;
 
@@ -45,7 +49,7 @@ class BackupService {
 
     // Initialize S3 client with credentials from environment variables
     this.s3Client = new S3Client({
-      region: process.env.AWS_REGION || '',
+      region: process.env.AWS_REGION || 'us-east-1',
       credentials: {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
@@ -104,9 +108,60 @@ class BackupService {
   }
 
   /**
+   * Backup a single file to local directory
+   */
+  private async backupToLocal(file: BackupFile): Promise<boolean> {
+    try {
+      if (!this.destinationPath) {
+        console.error('Destination path is not set for local backup');
+        return false;
+      }
+
+      // Construct the full source file path
+      const sourcePath = path.join(this.sourceDirectory, file.path);
+
+      // Construct the full destination file path
+      const destPath = path.join(this.destinationPath, file.path);
+
+      // Create destination directory if it doesn't exist
+      const destDir = path.dirname(destPath);
+      if (!fs.existsSync(destDir)) {
+        fs.mkdirSync(destDir, { recursive: true });
+      }
+
+      // Copy the file
+      fs.copyFileSync(sourcePath, destPath);
+
+      console.log(`Successfully backed up ${file.name} to local directory`);
+
+      // Update database with successful backup
+      if (file.dbId) {
+        databaseService.updateFileUpload(file.dbId, {
+          status: 'completed',
+          uploadTime: new Date().toISOString()
+        });
+      }
+
+      return true;
+    } catch (error) {
+      console.error(`Error backing up ${file.name} to local directory:`, error);
+
+      // Update database with failed backup
+      if (file.dbId) {
+        databaseService.updateFileUpload(file.dbId, {
+          status: 'failed',
+          errorMessage: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+
+      return false;
+    }
+  }
+
+  /**
    * Upload a single file to AWS S3
    */
-  private async backupSingleFile(file: BackupFile): Promise<boolean> {
+  private async backupToS3(file: BackupFile): Promise<boolean> {
     try {
       const bucketName = process.env.AWS_S3_BUCKET_NAME;
 
@@ -167,6 +222,17 @@ class BackupService {
       }
 
       return false;
+    }
+  }
+
+  /**
+   * Backup a single file to the configured destination
+   */
+  private async backupSingleFile(file: BackupFile): Promise<boolean> {
+    if (this.backupDestination === 'local') {
+      return this.backupToLocal(file);
+    } else {
+      return this.backupToS3(file);
     }
   }
 
@@ -234,13 +300,25 @@ class BackupService {
   /**
    * Start the backup process
    */
-  public startBackup(sourceDir: string): BackupStatus {
+  public startBackup(
+    sourceDir: string,
+    destination: 'local' | 's3' = 's3',
+    destPath?: string
+  ): BackupStatus {
     if (this.backupStatus.isRunning) {
       return this.backupStatus;
     }
 
-    // Store the source directory for later use
+    // Store the source directory and destination for later use
     this.sourceDirectory = sourceDir;
+    this.backupDestination = destination;
+    this.destinationPath = destPath || '';
+
+    // For local backups, ensure destination path is set
+    if (destination === 'local' && !destPath) {
+      // Default to a backup folder in the project root
+      this.destinationPath = path.join(__dirname, '../../backups');
+    }
 
     // Scan directory for files
     const files = this.scanDirectory(sourceDir, sourceDir);
@@ -256,7 +334,9 @@ class BackupService {
       completedFiles: 0,
       failedFiles: 0,
       totalSize,
-      sourceDirectory: sourceDir
+      sourceDirectory: sourceDir,
+      destination,
+      destinationPath: this.destinationPath
     });
 
     this.currentSessionId = sessionId;
@@ -292,7 +372,9 @@ class BackupService {
       totalSize,
       currentFile: '',
       files,
-      sessionId
+      sessionId,
+      destination,
+      destinationPath: this.destinationPath
     };
 
     this.currentIndex = 0;
