@@ -1,12 +1,14 @@
 import fs from 'fs';
 import path from 'path';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { databaseService } from './databaseService';
 
 interface BackupFile {
   path: string;
   name: string;
   size: number;
   status: 'pending' | 'inProgress' | 'completed' | 'failed';
+  dbId?: number;
 }
 
 interface BackupStatus {
@@ -17,6 +19,7 @@ interface BackupStatus {
   totalSize: number;
   currentFile: string;
   files: BackupFile[];
+  sessionId?: number;
 }
 
 const SUPPORTED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
@@ -27,6 +30,7 @@ class BackupService {
   private currentIndex: number = 0;
   private sourceDirectory: string = '';
   private s3Client: S3Client;
+  private currentSessionId: number | null = null;
 
   constructor() {
     this.backupStatus = {
@@ -141,9 +145,27 @@ class BackupService {
       await this.s3Client.send(command);
 
       console.log(`Successfully uploaded ${file.name} to S3`);
+
+      // Update database with successful upload
+      if (file.dbId) {
+        databaseService.updateFileUpload(file.dbId, {
+          status: 'completed',
+          uploadTime: new Date().toISOString()
+        });
+      }
+
       return true;
     } catch (error) {
       console.error(`Error uploading ${file.name} to S3:`, error);
+
+      // Update database with failed upload
+      if (file.dbId) {
+        databaseService.updateFileUpload(file.dbId, {
+          status: 'failed',
+          errorMessage: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+
       return false;
     }
   }
@@ -161,6 +183,13 @@ class BackupService {
     file.status = 'inProgress';
     this.backupStatus.currentFile = file.name;
 
+    // Update file status in database
+    if (file.dbId) {
+      databaseService.updateFileUpload(file.dbId, {
+        status: 'inProgress'
+      });
+    }
+
     try {
       const success = await this.backupSingleFile(file);
 
@@ -171,10 +200,25 @@ class BackupService {
         file.status = 'failed';
         this.backupStatus.failedFiles++;
       }
+
+      // Update session progress in database
+      if (this.currentSessionId) {
+        databaseService.updateBackupSession(this.currentSessionId, {
+          completedFiles: this.backupStatus.completedFiles,
+          failedFiles: this.backupStatus.failedFiles
+        });
+      }
     } catch (error) {
       console.error(`Error backing up file ${file.name}:`, error);
       file.status = 'failed';
       this.backupStatus.failedFiles++;
+
+      // Update session with failed file count
+      if (this.currentSessionId) {
+        databaseService.updateBackupSession(this.currentSessionId, {
+          failedFiles: this.backupStatus.failedFiles
+        });
+      }
     }
 
     this.currentIndex++;
@@ -204,6 +248,41 @@ class BackupService {
     // Calculate total size
     const totalSize = files.reduce((sum, file) => sum + file.size, 0);
 
+    // Create backup session in database
+    const sessionId = databaseService.createBackupSession({
+      startTime: new Date().toISOString(),
+      status: 'running',
+      totalFiles: files.length,
+      completedFiles: 0,
+      failedFiles: 0,
+      totalSize,
+      sourceDirectory: sourceDir
+    });
+
+    this.currentSessionId = sessionId;
+
+    // Create file upload records in database
+    const fileUploads = files.map(file => ({
+      sessionId,
+      filePath: file.path,
+      fileName: file.name,
+      fileSize: file.size,
+      status: 'pending' as const
+    }));
+
+    databaseService.bulkCreateFileUploads(fileUploads);
+
+    // Get the created file records with their IDs
+    const createdFiles = databaseService.getFileUploadsBySession(sessionId);
+
+    // Map database IDs back to our files
+    files.forEach((file) => {
+      const dbFile = createdFiles.find(f => f.filePath === file.path);
+      if (dbFile) {
+        file.dbId = dbFile.id;
+      }
+    });
+
     // Initialize backup status
     this.backupStatus = {
       isRunning: true,
@@ -212,7 +291,8 @@ class BackupService {
       failedFiles: 0,
       totalSize,
       currentFile: '',
-      files
+      files,
+      sessionId
     };
 
     this.currentIndex = 0;
@@ -222,6 +302,11 @@ class BackupService {
       this.processNextFile();
     } else {
       this.backupStatus.isRunning = false;
+      // Update session as completed if no files
+      databaseService.updateBackupSession(sessionId, {
+        status: 'completed',
+        endTime: new Date().toISOString()
+      });
     }
 
     return this.backupStatus;
@@ -231,12 +316,23 @@ class BackupService {
    * Stop the backup process
    */
   public stopBackup(): BackupStatus {
+    const wasRunning = this.backupStatus.isRunning;
     this.backupStatus.isRunning = false;
     this.backupStatus.currentFile = '';
 
     if (this.backupInterval) {
       clearInterval(this.backupInterval);
       this.backupInterval = null;
+    }
+
+    // Update backup session in database
+    if (this.currentSessionId && wasRunning) {
+      const status = this.currentIndex >= this.backupStatus.files.length ? 'completed' : 'stopped';
+      databaseService.updateBackupSession(this.currentSessionId, {
+        status,
+        endTime: new Date().toISOString()
+      });
+      this.currentSessionId = null;
     }
 
     return this.backupStatus;
@@ -264,6 +360,30 @@ class BackupService {
       files: []
     };
     this.currentIndex = 0;
+    this.currentSessionId = null;
+  }
+
+  /**
+   * Get backup history from database
+   */
+  public getBackupHistory(limit: number = 50) {
+    return databaseService.getAllBackupSessions(limit);
+  }
+
+  /**
+   * Get a specific backup session with its files
+   */
+  public getBackupSessionDetails(sessionId: number) {
+    const session = databaseService.getBackupSession(sessionId);
+    if (!session) {
+      return null;
+    }
+
+    const files = databaseService.getFileUploadsBySession(sessionId);
+    return {
+      ...session,
+      files
+    };
   }
 }
 

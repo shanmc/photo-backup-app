@@ -114,4 +114,48 @@ app.get('/api/backup/status', (req: Request, res: Response) => {
   }
 });
 
+// Get backup history
+app.get('/api/backup/history', (req: Request, res: Response) => {
+  try {
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+    const history = backupService.getBackupHistory(limit);
+    res.json(history);
+  } catch (error) {
+    console.error('Error getting backup history:', error);
+    res.status(500).json({
+      error: 'Failed to get backup history',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get specific backup session details
+app.get('/api/backup/session/:sessionId', (req: Request, res: Response) => {
+  try {
+    const sessionId = parseInt(req.params.sessionId, 10);
+
+    if (isNaN(sessionId)) {
+      return res.status(400).json({
+        error: 'Invalid session ID'
+      });
+    }
+
+    const sessionDetails = backupService.getBackupSessionDetails(sessionId);
+
+    if (!sessionDetails) {
+      return res.status(404).json({
+        error: 'Backup session not found'
+      });
+    }
+
+    res.json(sessionDetails);
+  } catch (error) {
+    console.error('Error getting backup session details:', error);
+    res.status(500).json({
+      error: 'Failed to get backup session details',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 export default app;

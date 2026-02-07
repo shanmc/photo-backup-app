@@ -11,3 +11,4 @@
 4. [x] Update the View Photos UI screen to fetch the Photo data from the server endpoint GET http://localhost:5000/api/photos
 5. [x] Create a new client UI feature that enables a photo backup sync process and monitors the progress
 6. [x] Update the server backup function to upload a file to an AWS S3 bucket
+7. [x] Add a sqlite database to keep track of the backup sync processes and file upload status
