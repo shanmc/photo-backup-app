@@ -3,6 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { readPhotosFromDirectory, getPhotoPath } from './services/photoService';
+import { backupService } from './services/backupService';
 
 const app: Express = express();
 
@@ -64,6 +65,50 @@ app.get('/api/photos/thumbnail/:folderId/:filename', (req: Request, res: Respons
     console.error('Error serving photo:', error);
     res.status(500).json({
       error: 'Failed to serve photo',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Backup endpoints
+
+// Start backup process
+app.post('/api/backup/start', (req: Request, res: Response) => {
+  try {
+    const status = backupService.startBackup(PHOTOS_DIR);
+    res.json(status);
+  } catch (error) {
+    console.error('Error starting backup:', error);
+    res.status(500).json({
+      error: 'Failed to start backup',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Stop backup process
+app.post('/api/backup/stop', (req: Request, res: Response) => {
+  try {
+    const status = backupService.stopBackup();
+    res.json(status);
+  } catch (error) {
+    console.error('Error stopping backup:', error);
+    res.status(500).json({
+      error: 'Failed to stop backup',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get backup status
+app.get('/api/backup/status', (req: Request, res: Response) => {
+  try {
+    const status = backupService.getStatus();
+    res.json(status);
+  } catch (error) {
+    console.error('Error getting backup status:', error);
+    res.status(500).json({
+      error: 'Failed to get backup status',
       message: error instanceof Error ? error.message : 'Unknown error'
     });
   }

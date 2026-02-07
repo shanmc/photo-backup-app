@@ -17,7 +17,10 @@
           <p>Access your photos anytime, anywhere</p>
         </div>
       </div>
-      <button class="btn-primary" @click="viewPhotos">View Photos</button>
+      <div class="action-buttons">
+        <button class="btn-primary" @click="viewPhotos">View Photos</button>
+        <button class="btn-secondary" @click="startBackup">Backup & Sync</button>
+      </div>
     </div>
   </div>
 </template>
@@ -28,6 +31,9 @@ export default {
   methods: {
     viewPhotos() {
       this.$emit('navigate', 'photos')
+    },
+    startBackup() {
+      this.$emit('navigate', 'backup')
     }
   }
 }
@@ -91,9 +97,15 @@ h1 {
   opacity: 0.9;
 }
 
-.btn-primary {
-  background: white;
-  color: #667eea;
+.action-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btn-primary,
+.btn-secondary {
   border: none;
   padding: 1rem 3rem;
   font-size: 1.2rem;
@@ -104,8 +116,24 @@ h1 {
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
-.btn-primary:hover {
+.btn-primary {
+  background: white;
+  color: #667eea;
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 2px solid white;
+}
+
+.btn-primary:hover,
+.btn-secondary:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 </style>

@@ -9,18 +9,21 @@
     </nav>
     <HomeScreen v-if="currentView === 'home'" @navigate="navigateTo" />
     <ViewPhotos v-if="currentView === 'photos'" />
+    <BackupSync v-if="currentView === 'backup'" />
   </div>
 </template>
 
 <script>
 import HomeScreen from './components/HomeScreen.vue'
 import ViewPhotos from './components/ViewPhotos.vue'
+import BackupSync from './components/BackupSync.vue'
 
 export default {
   name: 'App',
   components: {
     HomeScreen,
-    ViewPhotos
+    ViewPhotos,
+    BackupSync
   },
   data() {
     return {
