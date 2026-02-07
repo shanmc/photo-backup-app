@@ -20,6 +20,7 @@
       <div class="action-buttons">
         <button class="btn-primary" @click="viewPhotos">View Photos</button>
         <button class="btn-secondary" @click="startBackup">Backup & Sync</button>
+        <button class="btn-secondary" @click="viewHistory">Backup History</button>
       </div>
     </div>
   </div>
@@ -34,6 +35,9 @@ export default {
     },
     startBackup() {
       this.$emit('navigate', 'backup')
+    },
+    viewHistory() {
+      this.$emit('navigate', 'history')
     }
   }
 }
