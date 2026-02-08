@@ -47,7 +47,7 @@ export default {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-align: center;
-  color: #2c3e50;
+  color: #0b549d;
   margin: 0;
   padding: 0;
 }
@@ -75,7 +75,7 @@ export default {
 .nav-btn {
   background: transparent;
   border: none;
-  color: #667eea;
+  color: #447ceb;
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
